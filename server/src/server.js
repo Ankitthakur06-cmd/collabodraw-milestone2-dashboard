@@ -17,7 +17,6 @@ const httpServer = createServer(app);
 
 const CLIENT_URL = process.env.CLIENT_URL || "http://localhost:5173";
 
-console.log("✅ NEW SERVER FILE IS RUNNING");
 app.use(cors({ origin: CLIENT_URL }));
 app.use(express.json());
 
