@@ -3,14 +3,27 @@ import { useNavigate, useParams } from "react-router-dom";
 import Layout from "../components/common/Layout";
 import Toolbar from "../components/toolbar/Toolbar";
 import Whiteboard from "../components/canvas/Whiteboard";
+import ConnectionIndicator from "../components/presence/ConnectionIndicator";
 import { useBoardsStore } from "../store/boardsStore";
 import { useBoardStore } from "../store/boardStore";
+import { usePresenceStore } from "../store/presenceStore";
+import socket, { connect, disconnect, joinRoom, leaveRoom } from "../socket/socketClient";
 import type { Board } from "../types";
 
 // Local Canvas milestone (Phase 3): opens /board/:shareId, fetches the
 // board's metadata (title/shareId), and renders a fully local canvas —
-// no networking beyond the one-time metadata fetch, no Socket.IO, no
-// shape persistence. Shapes live only in boardStore for this milestone.
+// no shape persistence, no drawing sync. Shapes live only in boardStore.
+//
+// Milestone 5 adds just the Socket.IO room lifecycle (connect + join on
+// mount, leave + maybe-disconnect on unmount) and a bare connection
+// indicator — no drawing/cursor/shape events ride on the socket yet.
+
+// Shared across every mounted BoardPage instance (module scope = one
+// instance per module, regardless of how many components render), so
+// the socket is only disconnected once nothing is using it — e.g. two
+// BoardPage instances briefly overlapping during a React Router
+// transition, or React StrictMode's mount/unmount/mount in dev.
+let activeBoardPageInstances = 0;
 
 export default function BoardPage() {
   const { shareId } = useParams<{ shareId: string }>();
@@ -55,6 +68,77 @@ export default function BoardPage() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shareId]);
+
+  // Socket.IO room lifecycle (Milestone 5): connect + join this board's
+  // room on mount, listen for connection/room events to update
+  // presenceStore, then leave the room (and disconnect only if no other
+  // BoardPage instance still needs the socket) on unmount. Kept in its
+  // own effect, separate from the REST metadata fetch above.
+  useEffect(() => {
+    if (!shareId) return;
+
+    activeBoardPageInstances += 1;
+
+    const handleConnect = () => {
+      usePresenceStore.getState().setConnected();
+      usePresenceStore.getState().setSocketId(socket.id ?? null);
+      // Socket.IO issues a new socket.id on every reconnect, and the
+      // server has no memory of the old socket's room membership — so
+      // the room must be explicitly re-joined here, not just on mount.
+      joinRoom(shareId);
+    };
+
+    const handleDisconnect = () => {
+      usePresenceStore.getState().setDisconnected();
+      usePresenceStore.getState().setSocketId(null);
+      usePresenceStore.getState().clearUsers();
+    };
+
+    const handleJoinedBoard = (payload: { boardId: string; socketId: string }) => {
+      usePresenceStore.getState().setSocketId(payload.socketId);
+    };
+
+    const handleUserJoined = (payload: { socketId: string }) => {
+      usePresenceStore.getState().addUser(payload.socketId);
+    };
+
+    const handleUserLeft = (payload: { socketId: string }) => {
+      usePresenceStore.getState().removeUser(payload.socketId);
+    };
+
+    socket.on("connect", handleConnect);
+    socket.on("disconnect", handleDisconnect);
+    socket.on("joined-board", handleJoinedBoard);
+    socket.on("user-joined", handleUserJoined);
+    socket.on("user-left", handleUserLeft);
+
+    connect();
+    joinRoom(shareId);
+
+    // If the socket was already connected before this effect ran (e.g.
+    // navigating from one board straight to another), the "connect"
+    // event won't fire again — sync presenceStore immediately instead.
+    if (socket.connected) {
+      handleConnect();
+    }
+
+    return () => {
+      leaveRoom(shareId);
+
+      socket.off("connect", handleConnect);
+      socket.off("disconnect", handleDisconnect);
+      socket.off("joined-board", handleJoinedBoard);
+      socket.off("user-joined", handleUserJoined);
+      socket.off("user-left", handleUserLeft);
+
+      usePresenceStore.getState().clearUsers();
+
+      activeBoardPageInstances -= 1;
+      if (activeBoardPageInstances <= 0) {
+        disconnect();
+      }
+    };
   }, [shareId]);
 
   // Delete / Escape / Ctrl+Z, ignored while typing in an input (e.g.
@@ -112,12 +196,15 @@ export default function BoardPage() {
           <h1 className="text-xl font-semibold text-slate-900">{board.title}</h1>
           <p className="text-xs text-slate-400">Share ID: {board.shareId}</p>
         </div>
-        <button
-          onClick={() => navigate("/dashboard")}
-          className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
-        >
-          Back to Dashboard
-        </button>
+        <div className="flex items-center gap-4">
+          <ConnectionIndicator />
+          <button
+            onClick={() => navigate("/dashboard")}
+            className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+          >
+            Back to Dashboard
+          </button>
+        </div>
       </div>
 
       <div className="mt-4">
