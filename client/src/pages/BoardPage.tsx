@@ -8,7 +8,7 @@ import { useBoardsStore } from "../store/boardsStore";
 import { useBoardStore } from "../store/boardStore";
 import { usePresenceStore } from "../store/presenceStore";
 import socket, { connect, disconnect, joinRoom, leaveRoom } from "../socket/socketClient";
-import type { Board } from "../types";
+import type { Board, CanvasShape } from "../types";
 
 // Local Canvas milestone (Phase 3): opens /board/:shareId, fetches the
 // board's metadata (title/shareId), and renders a fully local canvas —
@@ -39,6 +39,10 @@ export default function BoardPage() {
   const deleteShape = useBoardStore((s) => s.deleteShape);
   const selectShape = useBoardStore((s) => s.selectShape);
   const undo = useBoardStore((s) => s.undo);
+  const applyRemoteShapeAdded = useBoardStore((s) => s.applyRemoteShapeAdded);
+  const applyRemoteShapeUpdated = useBoardStore((s) => s.applyRemoteShapeUpdated);
+  const applyRemoteShapeDeleted = useBoardStore((s) => s.applyRemoteShapeDeleted);
+  const applyRemoteCanvasCleared = useBoardStore((s) => s.applyRemoteCanvasCleared);
 
   const [board, setBoard] = useState<Board | null>(null);
   const [loading, setLoading] = useState(true);
@@ -107,18 +111,46 @@ export default function BoardPage() {
       usePresenceStore.getState().removeUser(payload.socketId);
     };
 
+    // Remote committed-shape events (Milestone 6, Step 4). These call
+    // only the boardStore's remote-apply actions — never the local
+    // ones — so a remote peer's action is never pushed onto this tab's
+    // own undo history, and nothing here ever emits back out.
+    const handleShapeAdded = (shape: CanvasShape) => {
+      applyRemoteShapeAdded(shape);
+    };
+
+    const handleShapeUpdated = (payload: { id: string } & Partial<CanvasShape>) => {
+      const { id, ...changes } = payload;
+      applyRemoteShapeUpdated(id, changes);
+    };
+
+    const handleShapeDeleted = (payload: { id: string }) => {
+      applyRemoteShapeDeleted(payload.id);
+    };
+
+    const handleCanvasCleared = () => {
+      applyRemoteCanvasCleared();
+    };
+
     socket.on("connect", handleConnect);
     socket.on("disconnect", handleDisconnect);
     socket.on("joined-board", handleJoinedBoard);
     socket.on("user-joined", handleUserJoined);
     socket.on("user-left", handleUserLeft);
+    socket.on("shape-added", handleShapeAdded);
+    socket.on("shape-updated", handleShapeUpdated);
+    socket.on("shape-deleted", handleShapeDeleted);
+    socket.on("canvas-cleared", handleCanvasCleared);
 
     connect();
-    joinRoom(shareId);
 
     // If the socket was already connected before this effect ran (e.g.
     // navigating from one board straight to another), the "connect"
-    // event won't fire again — sync presenceStore immediately instead.
+    // event won't fire again — sync presenceStore and (re)join the
+    // room immediately instead. Otherwise, handleConnect's own
+    // joinRoom(shareId) call (above) covers the join once "connect"
+    // fires — calling joinRoom() a second time here would double-send
+    // join-board on every connect.
     if (socket.connected) {
       handleConnect();
     }
@@ -131,6 +163,10 @@ export default function BoardPage() {
       socket.off("joined-board", handleJoinedBoard);
       socket.off("user-joined", handleUserJoined);
       socket.off("user-left", handleUserLeft);
+      socket.off("shape-added", handleShapeAdded);
+      socket.off("shape-updated", handleShapeUpdated);
+      socket.off("shape-deleted", handleShapeDeleted);
+      socket.off("canvas-cleared", handleCanvasCleared);
 
       usePresenceStore.getState().clearUsers();
 
@@ -139,7 +175,13 @@ export default function BoardPage() {
         disconnect();
       }
     };
-  }, [shareId]);
+  }, [
+    shareId,
+    applyRemoteShapeAdded,
+    applyRemoteShapeUpdated,
+    applyRemoteShapeDeleted,
+    applyRemoteCanvasCleared,
+  ]);
 
   // Delete / Escape / Ctrl+Z, ignored while typing in an input (e.g.
   // the stroke-width slider or a future text field).
@@ -151,6 +193,9 @@ export default function BoardPage() {
 
       if ((e.key === "Delete" || e.key === "Backspace") && selectedShapeId) {
         deleteShape(selectedShapeId);
+        // Emit only after the local delete succeeds. Undo (below) is
+        // intentionally local-only for this milestone — no emit there.
+        socket.emit("shape-deleted", { id: selectedShapeId });
       } else if (e.key === "Escape") {
         selectShape(null);
       } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {

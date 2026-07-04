@@ -35,6 +35,16 @@ interface BoardState {
   // Called when BoardPage mounts/switches boards, so a previous
   // board's local doodles don't leak into a different board.
   resetCanvas: () => void;
+
+  // Remote-apply counterparts (Milestone 6, Step 4). Mirror their local
+  // counterparts' state mutation exactly, but never touch `history` —
+  // a remote peer's action must never become an entry in this browser
+  // tab's own undo stack. Never emit anything (listeners call these,
+  // not the other way around).
+  applyRemoteShapeAdded: (shape: CanvasShape) => void;
+  applyRemoteShapeUpdated: (id: string, changes: Partial<CanvasShape>) => void;
+  applyRemoteShapeDeleted: (id: string) => void;
+  applyRemoteCanvasCleared: () => void;
 }
 
 export const useBoardStore = create<BoardState>((set, get) => ({
@@ -91,4 +101,33 @@ export const useBoardStore = create<BoardState>((set, get) => ({
 
   resetCanvas: () =>
     set({ shapes: [], selectedShapeId: null, history: [], activeTool: "select" }),
+
+  // --- Remote-apply counterparts (Milestone 6, Step 4) ---
+  // Same shape mutations as their local counterparts above, but no
+  // `history` push, ever — see boardStore audit note above. Local
+  // actions (addShape/updateShape/deleteShape/clearCanvas) are
+  // untouched and keep pushing to history exactly as before.
+
+  applyRemoteShapeAdded: (shape) => {
+    set((state) => ({ shapes: [...state.shapes, shape] }));
+  },
+
+  applyRemoteShapeUpdated: (id, changes) => {
+    set((state) => ({
+      shapes: state.shapes.map((shape) =>
+        shape.id === id ? ({ ...shape, ...changes } as CanvasShape) : shape
+      ),
+    }));
+  },
+
+  applyRemoteShapeDeleted: (id) => {
+    set((state) => ({
+      shapes: state.shapes.filter((shape) => shape.id !== id),
+      selectedShapeId: state.selectedShapeId === id ? null : state.selectedShapeId,
+    }));
+  },
+
+  applyRemoteCanvasCleared: () => {
+    set({ shapes: [], selectedShapeId: null });
+  },
 }));

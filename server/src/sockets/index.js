@@ -1,8 +1,13 @@
-// Socket.IO — networking foundation only (Milestone 5).
-// Rooms are keyed by board shareId. Only room management (join/leave +
-// presence-of-connection events) lives here. draw:* / cursor:* /
-// shape:undo / shape:redo etc. are still deferred to Phase 4/5/6 per the
-// finalized architecture (Section 6) — no drawing/cursor/sync events yet.
+// Socket.IO — networking foundation (Milestone 5) + committed-shape
+// relay (Milestone 6). Rooms are keyed by board shareId. Milestone 6
+// adds pure relay events for already-committed canvas changes
+// (shape-added / shape-updated / shape-deleted / canvas-cleared) —
+// the server does no validation or persistence of shape data, it just
+// forwards the payload to the rest of the room, same pattern as the
+// existing user-joined/user-left events. cursor:*, undo sync, and
+// persistence are still out of scope for this milestone.
+
+const RELAY_EVENTS = ["shape-added", "shape-updated", "shape-deleted", "canvas-cleared"];
 
 export function initSockets(io) {
   io.on("connection", (socket) => {
@@ -49,6 +54,18 @@ export function initSockets(io) {
         socket.data.boardId = null;
       }
     });
+
+    // Committed-shape relay: shape-added / shape-updated / shape-deleted /
+    // canvas-cleared. Each is a pure pass-through broadcast to the rest
+    // of the sender's current room — no shape validation, no DB write,
+    // no undo handling. The sender is excluded (socket.to, not io.to) so
+    // it doesn't get an echo of its own action.
+    for (const eventName of RELAY_EVENTS) {
+      socket.on(eventName, (payload) => {
+        if (!socket.data.boardId) return;
+        socket.to(socket.data.boardId).emit(eventName, payload);
+      });
+    }
 
     socket.on("disconnect", () => {
       console.log(`Socket disconnected: ${socket.id}`);

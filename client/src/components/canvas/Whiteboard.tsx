@@ -3,6 +3,7 @@ import { Layer, Stage } from "react-konva";
 import type Konva from "konva";
 import { useBoardStore } from "../../store/boardStore";
 import ShapeLayer from "./ShapeLayer";
+import socket from "../../socket/socketClient";
 import type { CanvasShape } from "../../types";
 
 // Dot-grid background is plain CSS on the wrapping div, not Konva
@@ -100,9 +101,18 @@ export default function Whiteboard() {
   function handleMouseUp() {
     if (isDrawing.current && draftShape) {
       addShape(draftShape);
+      // Emit only after the local commit succeeds — this is the local
+      // user's own finished shape, not the in-progress draft.
+      socket.emit("shape-added", draftShape);
     }
     isDrawing.current = false;
     setDraftShape(null);
+  }
+
+  function handleShapeDragEnd(id: string, x: number, y: number) {
+    updateShape(id, { x, y });
+    // Emit only after the local position update succeeds.
+    socket.emit("shape-updated", { id, x, y });
   }
 
   const allShapes = draftShape ? [...shapes, draftShape] : shapes;
@@ -129,7 +139,7 @@ export default function Whiteboard() {
             selectedShapeId={selectedShapeId}
             interactive={activeTool === "select"}
             onSelect={selectShape}
-            onDragEnd={(id, x, y) => updateShape(id, { x, y })}
+            onDragEnd={handleShapeDragEnd}
           />
         </Layer>
       </Stage>

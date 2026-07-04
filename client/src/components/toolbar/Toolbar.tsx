@@ -2,6 +2,7 @@ import { useBoardStore } from "../../store/boardStore";
 import type { ToolType } from "../../types";
 import ColorPicker from "./ColorPicker";
 import StrokeWidth from "./StrokeWidth";
+import socket from "../../socket/socketClient";
 
 const TOOLS: { value: ToolType; label: string }[] = [
   { value: "select", label: "Pointer" },
@@ -19,6 +20,9 @@ export default function Toolbar() {
   function handleClear() {
     if (window.confirm("Clear the entire canvas? This can't be undone.")) {
       clearCanvas();
+      // Emit only after the local clear succeeds — not resetCanvas(),
+      // which is a silent local board-switch cleanup, not a user action.
+      socket.emit("canvas-cleared", {});
     }
   }
 
