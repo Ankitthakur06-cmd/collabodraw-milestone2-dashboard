@@ -1,4 +1,5 @@
 import { Router } from "express";
+import mongoose from "mongoose";
 import { v4 as uuidv4 } from "uuid";
 import Board from "../models/Board.js";
 import authMiddleware from "../middleware/authMiddleware.js";
@@ -27,14 +28,16 @@ router.get("/", async (req, res) => {
 
 router.post("/", async (req, res) => {
   try {
-    const { title } = req.body;
+    const rawTitle = typeof req.body.title === "string" ? req.body.title.trim() : "";
 
-    if (!title || !title.trim()) {
-      return res.status(400).json({ success: false, message: "Board title is required" });
+    if (rawTitle.length > 100) {
+      return res.status(400).json({ success: false, message: "Board title cannot exceed 100 characters" });
     }
 
     const board = await Board.create({
-      title: title.trim(),
+      // Omit title entirely when blank so the schema's own
+      // default ("Untitled Board", set in Step 1) applies.
+      ...(rawTitle && { title: rawTitle }),
       ownerId: req.user._id,
       shareId: uuidv4(),
     });
@@ -45,15 +48,64 @@ router.post("/", async (req, res) => {
   }
 });
 
-// Single-board fetch (with elements[] history hydration) and delete
-// are Phase 4 work per the finalized architecture — left as stubs.
+// Fetch a board by its shareId. Any authenticated user who has the
+// shareId can open it — if they're not the owner and not already a
+// collaborator, they're added as one (this is the "join" flow).
+// Full elements[] hydration is Phase 4 (canvas) work — not needed yet
+// since there's no canvas to hydrate.
+router.get("/:shareId", async (req, res) => {
+  try {
+    const board = await Board.findOne({ shareId: req.params.shareId }).select(
+      "title shareId ownerId collaborators createdAt"
+    );
 
-router.get("/:shareId", (req, res) => {
-  res.status(501).json({ success: false, message: "Not implemented yet — Phase 4" });
+    if (!board) {
+      return res.status(404).json({ success: false, message: "Board not found" });
+    }
+
+    const userId = req.user._id.toString();
+    const isOwner = board.ownerId.toString() === userId;
+
+    if (!isOwner) {
+      // $addToSet is atomic and a no-op if the user is already a
+      // collaborator — duplicate participants are naturally impossible.
+      await Board.updateOne({ _id: board._id }, { $addToSet: { collaborators: req.user._id } });
+      if (!board.collaborators.some((collaboratorId) => collaboratorId.toString() === userId)) {
+        board.collaborators.push(req.user._id);
+      }
+    }
+
+    return res.status(200).json({ success: true, board });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: "Failed to load board" });
+  }
 });
 
-router.delete("/:id", (req, res) => {
-  res.status(501).json({ success: false, message: "Not implemented yet — Phase 4" });
+// Only the board's owner can delete it.
+router.delete("/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: "Invalid board id" });
+    }
+
+    const board = await Board.findById(id);
+
+    if (!board) {
+      return res.status(404).json({ success: false, message: "Board not found" });
+    }
+
+    if (board.ownerId.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ success: false, message: "Only the board owner can delete this board" });
+    }
+
+    await board.deleteOne();
+
+    return res.status(200).json({ success: true, message: "Board deleted" });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: "Failed to delete board" });
+  }
 });
 
 export default router;

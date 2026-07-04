@@ -17,10 +17,15 @@ const elementSchema = new mongoose.Schema(
 
 const boardSchema = new mongoose.Schema(
   {
-    title: { type: String },
-    ownerId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    title: {
+      type: String,
+      trim: true,
+      maxlength: [100, "Board title cannot exceed 100 characters"],
+      default: "Untitled Board",
+    },
+    ownerId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
     collaborators: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
-    shareId: { type: String, unique: true },
+    shareId: { type: String, unique: true, required: true },
     elements: [elementSchema],
   },
   { timestamps: true }
