@@ -15,7 +15,7 @@ interface FormErrors {
 }
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const MIN_PASSWORD_LENGTH = 6;
+const MIN_PASSWORD_LENGTH = 8;
 
 export default function RegisterPage() {
   const navigate = useNavigate();
@@ -128,7 +128,7 @@ export default function RegisterPage() {
               className={`mt-1 w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-400 ${
                 errors.password ? "border-red-400" : "border-slate-300"
               }`}
-              placeholder="At least 6 characters"
+              placeholder="At least 8 characters"
             />
             {errors.password && <p className="mt-1 text-xs text-red-500">{errors.password}</p>}
           </div>

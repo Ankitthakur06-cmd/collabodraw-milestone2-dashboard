@@ -10,7 +10,7 @@ import authMiddleware from "../middleware/authMiddleware.js";
 const router = Router();
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const MIN_PASSWORD_LENGTH = 6;
+const MIN_PASSWORD_LENGTH = 8;
 
 router.post("/register", async (req, res) => {
   try {
@@ -43,7 +43,7 @@ router.post("/register", async (req, res) => {
     const passwordHash = await bcrypt.hash(password, 10);
     const user = await User.create({ name: name.trim(), email: normalizedEmail, passwordHash });
 
-    const token = generateToken({ id: user._id });
+    const token = generateToken({ id: user._id, email: user.email });
 
     return res.status(201).json({
       success: true,
@@ -70,7 +70,7 @@ router.post("/login", async (req, res) => {
     }
 
     const normalizedEmail = email.toLowerCase().trim();
-    const user = await User.findOne({ email: normalizedEmail });
+    const user = await User.findOne({ email: normalizedEmail }).select("+passwordHash");
 
     // Same generic message for "no such user" and "wrong password" —
     // avoids revealing which part of the credentials was wrong.
@@ -78,7 +78,7 @@ router.post("/login", async (req, res) => {
       return res.status(401).json({ success: false, message: "Invalid email or password" });
     }
 
-    const token = generateToken({ id: user._id });
+    const token = generateToken({ id: user._id, email: user.email });
 
     return res.status(200).json({
       success: true,

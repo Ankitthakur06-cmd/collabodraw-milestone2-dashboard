@@ -6,6 +6,7 @@ import type {
   Board,
   LoginPayload,
   RegisterPayload,
+  User,
 } from "../types";
 
 // Single axios instance for all REST calls (auth + board CRUD), and the
@@ -65,6 +66,11 @@ export async function registerUser(payload: RegisterPayload): Promise<AuthRespon
 export async function loginUser(payload: LoginPayload): Promise<AuthResponse> {
   const { data } = await apiClient.post<AuthResponse>("/auth/login", payload);
   return data;
+}
+
+export async function getCurrentUser(): Promise<User> {
+  const { data } = await apiClient.get<{ success: boolean; user: User }>("/auth/me");
+  return data.user;
 }
 
 export async function getBoards(): Promise<Board[]> {

@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import toast from "react-hot-toast";
 import type { User, LoginPayload, RegisterPayload } from "../types";
-import { extractErrorMessage, loginUser, registerUser } from "../api/apiClient";
+import { extractErrorMessage, getCurrentUser, loginUser, registerUser } from "../api/apiClient";
 
 // Auth state, persisted to localStorage so a refresh doesn't log the
 // user out. Login/register centralize their own API call + error toast
@@ -21,6 +21,7 @@ interface AuthState {
   register: (payload: RegisterPayload) => Promise<boolean>;
   logout: () => void;
   hydrateAuth: () => void;
+  fetchCurrentUser: () => Promise<void>;
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -65,6 +66,22 @@ export const useAuthStore = create<AuthState>()(
       },
 
       hydrateAuth: () => set({ hasHydrated: true }),
+
+      // Re-fetches the logged-in user from the server (GET /auth/me).
+      // Not called automatically anywhere yet — an expired/invalid
+      // token is already caught lazily by the axios 401 interceptor
+      // on the first real request, so calling this on every app load
+      // would just be an extra round trip with no real benefit today.
+      // Kept available for anything that wants to refresh profile data
+      // on demand (e.g. a future "edit profile" screen).
+      fetchCurrentUser: async () => {
+        try {
+          const user = await getCurrentUser();
+          set({ user, isAuthenticated: true });
+        } catch (err) {
+          toast.error(extractErrorMessage(err, "Couldn't load your profile."));
+        }
+      },
     }),
     {
       name: "collabodraw-auth",

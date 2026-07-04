@@ -10,18 +10,7 @@ import boardRoutes from "./routes/boardRoutes.js";
 import errorHandler from "./middleware/errorHandler.js";
 import initSockets from "./sockets/index.js";
 
-import path from "path";
-import { fileURLToPath } from "url";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-const result = dotenv.config({
-  path: path.join(__dirname, "../.env"),
-});
-
-console.log(result);
-console.log("MONGO_URI:", process.env.MONGO_URI);
+dotenv.config();
 
 const app = express();
 const httpServer = createServer(app);
