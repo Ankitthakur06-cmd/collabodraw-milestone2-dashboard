@@ -15,6 +15,20 @@ export interface Board {
   ownerId: string;
   createdAt: string;
 }
+export interface BoardsResponse {
+  success: true;
+  boards: Board[];
+}
+
+export interface BoardResponse {
+  success: true;
+  board: Board;
+}
+
+export interface DeleteBoardResponse {
+  success: true;
+  message: string;
+}
 
 export interface Shape {
   shapeId: string;
