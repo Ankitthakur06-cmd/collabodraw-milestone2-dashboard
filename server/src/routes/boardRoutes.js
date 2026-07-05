@@ -81,6 +81,62 @@ router.get("/:shareId", async (req, res) => {
   }
 });
 
+// Return the board's persisted canvas as a flat shapes[] array, mapped
+// from the existing elements[] sub-documents back into the same shape
+// shape the frontend already works with ({ id, type, ...data }).
+router.get("/:shareId/canvas", async (req, res) => {
+  try {
+    const board = await Board.findOne({ shareId: req.params.shareId }).select("elements");
+
+    if (!board) {
+      return res.status(404).json({ success: false, message: "Board not found" });
+    }
+
+    const shapes = board.elements.map((element) => ({
+      id: element.shapeId,
+      type: element.type,
+      ...(element.data ?? {}),
+    }));
+
+    return res.status(200).json({ success: true, shapes });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: "Failed to load canvas" });
+  }
+});
+
+// Replace the board's persisted canvas with the latest full shapes[]
+// snapshot from the client. No diffing, no versioning, no event
+// sourcing — just overwrite elements[] with what's sent, same
+// last-write-wins approach already used for live sync (Milestone 6).
+router.patch("/:shareId/canvas", async (req, res) => {
+  try {
+    const shapes = req.body.shapes;
+
+    if (!Array.isArray(shapes)) {
+      return res.status(400).json({ success: false, message: "shapes must be an array" });
+    }
+
+    const elements = shapes.map((shape) => {
+      const { id, type, ...data } = shape ?? {};
+      return { shapeId: id, type, data, userId: req.user._id };
+    });
+
+    const board = await Board.findOneAndUpdate(
+      { shareId: req.params.shareId },
+      { elements },
+      { new: true }
+    ).select("_id");
+
+    if (!board) {
+      return res.status(404).json({ success: false, message: "Board not found" });
+    }
+
+    return res.status(200).json({ success: true });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: "Failed to save canvas" });
+  }
+});
+
 // Only the board's owner can delete it.
 router.delete("/:id", async (req, res) => {
   try {

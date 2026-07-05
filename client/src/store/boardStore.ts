@@ -45,6 +45,12 @@ interface BoardState {
   applyRemoteShapeUpdated: (id: string, changes: Partial<CanvasShape>) => void;
   applyRemoteShapeDeleted: (id: string) => void;
   applyRemoteCanvasCleared: () => void;
+
+  // Persistence (Milestone 7). Populates the canvas from the backend's
+  // saved shapes when a board opens. Same "no history" reasoning as the
+  // remote-apply actions above — loading the board's existing state is
+  // not an undoable user action, and this never emits either.
+  loadShapes: (shapes: CanvasShape[]) => void;
 }
 
 export const useBoardStore = create<BoardState>((set, get) => ({
@@ -129,5 +135,10 @@ export const useBoardStore = create<BoardState>((set, get) => ({
 
   applyRemoteCanvasCleared: () => {
     set({ shapes: [], selectedShapeId: null });
+  },
+
+  // --- Persistence (Milestone 7) ---
+  loadShapes: (shapes) => {
+    set({ shapes, selectedShapeId: null });
   },
 }));

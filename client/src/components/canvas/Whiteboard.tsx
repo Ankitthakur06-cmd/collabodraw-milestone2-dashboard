@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from "react";
+import { useParams } from "react-router-dom";
 import { Layer, Stage } from "react-konva";
 import type Konva from "konva";
 import { useBoardStore } from "../../store/boardStore";
 import ShapeLayer from "./ShapeLayer";
 import socket from "../../socket/socketClient";
+import { saveBoardCanvas } from "../../api/apiClient";
 import type { CanvasShape } from "../../types";
 
 // Dot-grid background is plain CSS on the wrapping div, not Konva
@@ -15,6 +17,7 @@ const GRID_STYLE = {
 };
 
 export default function Whiteboard() {
+  const { shareId } = useParams<{ shareId: string }>();
   const shapes = useBoardStore((s) => s.shapes);
   const selectedShapeId = useBoardStore((s) => s.selectedShapeId);
   const activeTool = useBoardStore((s) => s.activeTool);
@@ -98,12 +101,22 @@ export default function Whiteboard() {
     });
   }
 
+  // Persistence (Milestone 7): save the latest full shapes snapshot to
+  // the backend after a local action has completed. Fire-and-forget —
+  // sync already happened via socket; a failed save just means this
+  // change won't survive a refresh, not something to block the UI on.
+  function persistCanvas() {
+    if (!shareId) return;
+    saveBoardCanvas(shareId, useBoardStore.getState().shapes).catch(() => {});
+  }
+
   function handleMouseUp() {
     if (isDrawing.current && draftShape) {
       addShape(draftShape);
       // Emit only after the local commit succeeds — this is the local
       // user's own finished shape, not the in-progress draft.
       socket.emit("shape-added", draftShape);
+      persistCanvas();
     }
     isDrawing.current = false;
     setDraftShape(null);
@@ -113,6 +126,7 @@ export default function Whiteboard() {
     updateShape(id, { x, y });
     // Emit only after the local position update succeeds.
     socket.emit("shape-updated", { id, x, y });
+    persistCanvas();
   }
 
   const allShapes = draftShape ? [...shapes, draftShape] : shapes;

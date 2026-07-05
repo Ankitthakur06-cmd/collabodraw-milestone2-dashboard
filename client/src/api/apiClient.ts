@@ -4,6 +4,7 @@ import type {
   ApiErrorResponse,
   AuthResponse,
   Board,
+  CanvasShape,
   LoginPayload,
   RegisterPayload,
   User,
@@ -92,6 +93,20 @@ export async function deleteBoard(id: string): Promise<void> {
 export async function joinBoard(shareId: string): Promise<Board> {
   const { data } = await apiClient.get<{ success: boolean; board: Board }>(`/boards/${shareId}`);
   return data.board;
+}
+
+// Persistence (canvas survives refresh/reconnect/server restart).
+// GET returns the board's saved shapes; PATCH replaces them wholesale
+// with the latest full snapshot — no diffing, no versioning.
+export async function getBoardCanvas(shareId: string): Promise<CanvasShape[]> {
+  const { data } = await apiClient.get<{ success: boolean; shapes: CanvasShape[] }>(
+    `/boards/${shareId}/canvas`
+  );
+  return data.shapes;
+}
+
+export async function saveBoardCanvas(shareId: string, shapes: CanvasShape[]): Promise<void> {
+  await apiClient.patch(`/boards/${shareId}/canvas`, { shapes });
 }
 
 export default apiClient;

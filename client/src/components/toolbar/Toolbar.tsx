@@ -1,8 +1,10 @@
+import { useParams } from "react-router-dom";
 import { useBoardStore } from "../../store/boardStore";
 import type { ToolType } from "../../types";
 import ColorPicker from "./ColorPicker";
 import StrokeWidth from "./StrokeWidth";
 import socket from "../../socket/socketClient";
+import { saveBoardCanvas } from "../../api/apiClient";
 
 const TOOLS: { value: ToolType; label: string }[] = [
   { value: "select", label: "Pointer" },
@@ -13,6 +15,7 @@ const TOOLS: { value: ToolType; label: string }[] = [
 ];
 
 export default function Toolbar() {
+  const { shareId } = useParams<{ shareId: string }>();
   const activeTool = useBoardStore((s) => s.activeTool);
   const setTool = useBoardStore((s) => s.setTool);
   const clearCanvas = useBoardStore((s) => s.clearCanvas);
@@ -23,6 +26,10 @@ export default function Toolbar() {
       // Emit only after the local clear succeeds — not resetCanvas(),
       // which is a silent local board-switch cleanup, not a user action.
       socket.emit("canvas-cleared", {});
+      // Persist (Milestone 7): shapes is now [] after clearCanvas().
+      if (shareId) {
+        saveBoardCanvas(shareId, useBoardStore.getState().shapes).catch(() => {});
+      }
     }
   }
 

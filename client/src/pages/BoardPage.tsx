@@ -7,6 +7,7 @@ import ConnectionIndicator from "../components/presence/ConnectionIndicator";
 import { useBoardsStore } from "../store/boardsStore";
 import { useBoardStore } from "../store/boardStore";
 import { usePresenceStore } from "../store/presenceStore";
+import { getBoardCanvas, saveBoardCanvas } from "../api/apiClient";
 import socket, { connect, disconnect, joinRoom, leaveRoom } from "../socket/socketClient";
 import type { Board, CanvasShape } from "../types";
 
@@ -43,6 +44,7 @@ export default function BoardPage() {
   const applyRemoteShapeUpdated = useBoardStore((s) => s.applyRemoteShapeUpdated);
   const applyRemoteShapeDeleted = useBoardStore((s) => s.applyRemoteShapeDeleted);
   const applyRemoteCanvasCleared = useBoardStore((s) => s.applyRemoteCanvasCleared);
+  const loadShapes = useBoardStore((s) => s.loadShapes);
 
   const [board, setBoard] = useState<Board | null>(null);
   const [loading, setLoading] = useState(true);
@@ -58,14 +60,32 @@ export default function BoardPage() {
     setLoading(true);
     setError(null);
 
-    joinBoard(shareId).then((result) => {
+    joinBoard(shareId).then(async (result) => {
       if (cancelled) return;
-      if (result) {
-        setBoard(result);
-      } else {
+      if (!result) {
         setError("This board doesn't exist or you don't have access to it.");
+        setLoading(false);
+        return;
       }
-      setLoading(false);
+
+      setBoard(result);
+
+      // Persistence (Milestone 7): populate the canvas with whatever
+      // was last saved for this board. Non-fatal if it fails — the
+      // board metadata already loaded fine, so the canvas just starts
+      // empty rather than blocking the whole page on a transient error.
+      try {
+        const shapes = await getBoardCanvas(shareId);
+        if (!cancelled) {
+          loadShapes(shapes);
+        }
+      } catch {
+        // Swallow — see comment above.
+      }
+
+      if (!cancelled) {
+        setLoading(false);
+      }
     });
 
     return () => {
@@ -196,6 +216,14 @@ export default function BoardPage() {
         // Emit only after the local delete succeeds. Undo (below) is
         // intentionally local-only for this milestone — no emit there.
         socket.emit("shape-deleted", { id: selectedShapeId });
+        // Persist (Milestone 7): save the latest full shapes snapshot
+        // after the action has completed — not during, not for undo.
+        if (shareId) {
+          saveBoardCanvas(shareId, useBoardStore.getState().shapes).catch(() => {
+            // Non-fatal — sync already happened via socket; a failed
+            // save just means this change won't survive a refresh.
+          });
+        }
       } else if (e.key === "Escape") {
         selectShape(null);
       } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
@@ -206,7 +234,7 @@ export default function BoardPage() {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectedShapeId, deleteShape, selectShape, undo]);
+  }, [selectedShapeId, deleteShape, selectShape, undo, shareId]);
 
   if (loading) {
     return (
