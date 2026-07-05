@@ -117,6 +117,7 @@ export default function BoardPage() {
       usePresenceStore.getState().setDisconnected();
       usePresenceStore.getState().setSocketId(null);
       usePresenceStore.getState().clearUsers();
+      usePresenceStore.getState().clearCursors();
     };
 
     const handleJoinedBoard = (payload: { boardId: string; socketId: string }) => {
@@ -129,6 +130,7 @@ export default function BoardPage() {
 
     const handleUserLeft = (payload: { socketId: string }) => {
       usePresenceStore.getState().removeUser(payload.socketId);
+      usePresenceStore.getState().removeCursor(payload.socketId);
     };
 
     // Remote committed-shape events (Milestone 6, Step 4). These call
@@ -152,6 +154,15 @@ export default function BoardPage() {
       applyRemoteCanvasCleared();
     };
 
+    // Live cursor relay (Milestone 8): server tags every relayed cursor
+    // with the sender's socketId. No username is available at the
+    // socket layer (sockets aren't authenticated — a deliberate
+    // Milestone 5 decision), so fall back to the socketId itself as
+    // the display name when one isn't supplied.
+    const handleCursorUpdate = (payload: { socketId: string; x: number; y: number; name?: string }) => {
+      usePresenceStore.getState().setCursor(payload.socketId, payload.x, payload.y, payload.name ?? payload.socketId);
+    };
+
     socket.on("connect", handleConnect);
     socket.on("disconnect", handleDisconnect);
     socket.on("joined-board", handleJoinedBoard);
@@ -161,6 +172,7 @@ export default function BoardPage() {
     socket.on("shape-updated", handleShapeUpdated);
     socket.on("shape-deleted", handleShapeDeleted);
     socket.on("canvas-cleared", handleCanvasCleared);
+    socket.on("cursor-update", handleCursorUpdate);
 
     connect();
 
@@ -187,6 +199,7 @@ export default function BoardPage() {
       socket.off("shape-updated", handleShapeUpdated);
       socket.off("shape-deleted", handleShapeDeleted);
       socket.off("canvas-cleared", handleCanvasCleared);
+      socket.off("cursor-update", handleCursorUpdate);
 
       usePresenceStore.getState().clearUsers();
 

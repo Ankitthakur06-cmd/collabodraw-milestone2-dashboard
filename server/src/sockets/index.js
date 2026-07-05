@@ -1,11 +1,12 @@
 // Socket.IO — networking foundation (Milestone 5) + committed-shape
-// relay (Milestone 6). Rooms are keyed by board shareId. Milestone 6
-// adds pure relay events for already-committed canvas changes
-// (shape-added / shape-updated / shape-deleted / canvas-cleared) —
-// the server does no validation or persistence of shape data, it just
-// forwards the payload to the rest of the room, same pattern as the
-// existing user-joined/user-left events. cursor:*, undo sync, and
-// persistence are still out of scope for this milestone.
+// relay (Milestone 6) + live cursor relay (Milestone 8). Rooms are
+// keyed by board shareId. Milestone 6 adds pure relay events for
+// already-committed canvas changes (shape-added / shape-updated /
+// shape-deleted / canvas-cleared) — the server does no validation or
+// persistence of shape data, it just forwards the payload to the rest
+// of the room, same pattern as the existing user-joined/user-left
+// events. Milestone 8 adds the same pass-through treatment for live
+// cursor position — no storage, no persistence, in-memory relay only.
 
 const RELAY_EVENTS = ["shape-added", "shape-updated", "shape-deleted", "canvas-cleared"];
 
@@ -66,6 +67,17 @@ export function initSockets(io) {
         socket.to(socket.data.boardId).emit(eventName, payload);
       });
     }
+
+    // Live cursor relay (Milestone 8): client emits "cursor-move" with
+    // its own position; server relays it as "cursor-update" to the rest
+    // of the sender's current room, tagging on socketId so recipients
+    // know whose cursor it is. Nothing is stored — this is an in-memory,
+    // fire-and-forget pass-through, same as the shape relay above, just
+    // under a different event name in vs. out.
+    socket.on("cursor-move", (payload) => {
+      if (!socket.data.boardId) return;
+      socket.to(socket.data.boardId).emit("cursor-update", { ...payload, socketId: socket.id });
+    });
 
     socket.on("disconnect", () => {
       console.log(`Socket disconnected: ${socket.id}`);

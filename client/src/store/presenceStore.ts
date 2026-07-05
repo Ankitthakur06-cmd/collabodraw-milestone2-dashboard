@@ -33,6 +33,13 @@ interface PresenceState {
   addUser: (socketId: string) => void;
   removeUser: (socketId: string) => void;
   clearUsers: () => void;
+
+  // --- Milestone 8: live cursor positions ---
+  // Reuses the existing `cursors` Map above, keyed by socketId (same key
+  // space as `usersInRoom`) — no new state shape, no new store.
+  setCursor: (socketId: string, x: number, y: number, name: string) => void;
+  removeCursor: (socketId: string) => void;
+  clearCursors: () => void;
 }
 
 export const usePresenceStore = create<PresenceState>((set) => ({
@@ -60,4 +67,22 @@ export const usePresenceStore = create<PresenceState>((set) => ({
     })),
 
   clearUsers: () => set({ usersInRoom: [] }),
+
+  // --- Milestone 8: live cursor positions ---
+  setCursor: (socketId, x, y, name) =>
+    set((state) => {
+      const cursors = new Map(state.cursors);
+      cursors.set(socketId, { x, y, name });
+      return { cursors };
+    }),
+
+  removeCursor: (socketId) =>
+    set((state) => {
+      if (!state.cursors.has(socketId)) return state;
+      const cursors = new Map(state.cursors);
+      cursors.delete(socketId);
+      return { cursors };
+    }),
+
+  clearCursors: () => set({ cursors: new Map() }),
 }));
